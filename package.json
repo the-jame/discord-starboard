@@ -1,0 +1,17 @@
+{
+  "name": "discord-simple-starboard",
+  "version": "1.1.0",
+  "description": "discord bot for creating a starboard in a server with predefined channel/guild IDs",
+  "main": "star.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "The-Jame",
+  "license": "ISC",
+  "dependencies": {
+    "discord.js": "github:discordjs/discord.js#master",
+    "node-fetch": "^2.6.0",
+    "set-immediate": "^0.1.1",
+    "setimmediate": "^1.0.5"
+  }
+}
