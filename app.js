@@ -11,7 +11,7 @@ let guildID = '';
 let smugboardID = '';
 let token = '';
 let messagePosted = {};
-
+let aaa = "aaa";
 try {
   settings = require('./settings.json');
 } catch (e) {
