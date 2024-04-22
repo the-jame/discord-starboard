@@ -6,34 +6,36 @@ const client = new Discord.Client({
 
 // emoji that goes in the post title
 const tt = '⭐';
-let settings;
+let settings2;
 let guildID = '';
 let smugboardID = '';
 let token = '';
 let messagePosted = {};
 
 try {
-  settings = require('./settings.json');
+  settings2 = require('./settings2.json');
 } catch (e) {
-  console.log(`a settings.json file has not been generated. ${e.stack}`);
+  console.log(`a settings2.json file has not been generated. ${e.stack}`);
   process.exit();
 }
 
 function login() {
-  if (settings.token) {
+  if (settings2.token) {
     console.log(`Logging in with token...`);
-    client.login(settings.token);
+    client.login(settings2.token);
   } else {
-    console.log('Error logging in: There may be an issue with you settings.json file');
+    console.log('Error logging in: There may be an issue with you settings2.json file');
   }
 }
 
 client.on('ready', () => {
   console.log(`Bot has started, with ${client.users.size} users, in ${client.channels.size} channels of ${client.guilds.size} guilds.`);
-  guildID = settings.serverID;
-  smugboardID = settings.channelID;
-  loadIntoMemory(client, guildID, smugboardID, settings.fetchLimit);
-  //client.user.setActivity(`you...`, { type: 'WATCHING' })
+  guildID = settings2.serverID;
+  smugboardID = settings2.channelID;
+  loadIntoMemory(client, guildID, smugboardID, settings2.fetchLimit);
+  reactionEmoji = client.emojis.get('705327750340411412');
+
+  client.user.setActivity(`you shitpost...`, { type: 'WATCHING' })
 })
 
   // BEGIN STARBOARD CODE
@@ -82,7 +84,7 @@ async function loadIntoMemory(client, guildID, channelID, limit) {
     // mapAccumulator[obj.key] = obj.val;
     mapAccumulator[String(obj.content.match(/\((\d{18})\)/)[1])] = {
       p: true,
-      lc: settings.threshold + 1,
+      lc: settings2.threshold + 1,
       legacy: true,
       psm: obj.id,
     };
@@ -96,7 +98,7 @@ async function loadIntoMemory(client, guildID, channelID, limit) {
     // mapAccumulator[obj.key] = obj.val;
     mapAccumulator[String(obj.embeds[0].footer.text).match(/\((\d{18})\)/)[1]] = {
       p: true,
-      lc: settings.threshold + 1,
+      lc: settings2.threshold + 1,
       legacy: false,
       psm: obj.id,
     };
@@ -106,7 +108,7 @@ async function loadIntoMemory(client, guildID, channelID, limit) {
 
   messagePosted = {...postsMap, ...newPostsMap};
 
-  console.log(`Loaded ${Object.keys(postsMap).length} legacy posts, and ${Object.keys(newPostsMap).length} new posts in ${settings.reactionEmoji} channel`);
+  console.log(`Loaded ${Object.keys(postsMap).length} legacy posts, and ${Object.keys(newPostsMap).length} new posts in Shitboard channel`);
 
   console.log(`Loading complete`)
 }
@@ -116,7 +118,7 @@ client.on('messageReactionAdd', (reaction_orig, user) => {
   // if channel is posting channel
   if (reaction_orig.message.channel.id == smugboardID) return;
   // if reaction is not desired emoji
-  if (reaction_orig.emoji.name !== settings.reactionEmoji) return;
+  if (reaction_orig.emoji.name !== reactionEmoji) return;
 
 
   const msg = reaction_orig.message;
@@ -138,7 +140,7 @@ client.on('messageReactionAdd', (reaction_orig, user) => {
     };
   }else{
     if(messagePosted[msgID].legacy){
-      console.log(`Legacy message ${settings.reactionEmoji}'d, ignoring`)
+      console.log(`Legacy message ${reactionEmoji}'d, ignoring`)
       return;
     }
   }
@@ -147,8 +149,8 @@ client.on('messageReactionAdd', (reaction_orig, user) => {
     // if message is older than set amount
     let dateDiff = (new Date()) - reaction_orig.message.createdAt;
     let dateCutoff = 1000 * 60 * 60 * 24;
-    if (Math.floor(dateDiff / dateCutoff) >= settings.dateCutoff) {
-      console.log(`a message older than ${settings.dateCutoff} days was reacted to, ignoring`);
+    if (Math.floor(dateDiff / dateCutoff) >= settings2.dateCutoff) {
+      console.log(`a message older than ${settings2.dateCutoff} days was reacted to, ignoring`);
       return;
     }
 
@@ -156,10 +158,10 @@ client.on('messageReactionAdd', (reaction_orig, user) => {
     //message is starred. This is to get the 'actual' count
     msg.reactions.forEach((reaction) => {
 
-      if (reaction.emoji.name == settings.reactionEmoji) {
-        console.log(`message ${settings.reactionEmoji}'d! (${msgID}) in #${msgChannel.name} total: ${reaction.count}`);
+      if (reaction.emoji.name == reactionEmoji) {
+        console.log(`message ${reactionEmoji}'d! (${msgID}) in #${msgChannel.name} total: ${reaction.count}`);
         // did message reach threshold
-        if (reaction.count >= settings.threshold) {
+        if (reaction.count >= settings2.threshold) {
           messagePosted[msgID].lc = reaction.count;
           // if message is already posted
           if (messagePosted[msgID].hasOwnProperty('psm')) {
@@ -208,7 +210,7 @@ client.on('messageReactionAdd', (reaction_orig, user) => {
 
             const embed = new Discord.MessageEmbed()
               .setAuthor(msg.author.username, avatarURL)
-              .setColor(settings.hexcolor)
+              .setColor(settings2.hexcolor)
               .setDescription(contentMsg)
               .setImage(eURL)
               .setTimestamp(new Date())
