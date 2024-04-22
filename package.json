@@ -13,5 +13,6 @@
     "node-fetch": "^2.6.0",
     "set-immediate": "^0.1.1",
     "setimmediate": "^1.0.5"
-  }
+  },
+  "devDependencies": {}
 }
