@@ -104,7 +104,7 @@ client.on('messageReactionAdd', async (reaction, user) => {
       messagePosted[message.id].p = true;
       
       const embed = new EmbedBuilder()
-        .setAuthor({ name: message.author.username, iconURL: message.author.displayAvatarURL() })
+        .setAuthor({ name: message.member?.displayName || message.author.displayName || message.author.username, iconURL: message.author.displayAvatarURL() })
         .setColor(embedColor)
         .setDescription(`${message.content || ''}\n\n→ [original message](${message.url})`)
         .setTimestamp(message.createdAt)
