@@ -13,6 +13,7 @@ const client = new Client({
 const tt = '⭐';
 let settings;
 let messagePosted = {};
+const processing = new Set();
 
 try {
   settings = require('./settings.json');
@@ -51,7 +52,7 @@ async function loadIntoMemory(guildID, channelID, limit) {
         // Find original ID in content or footer
         const idMatch = m.content.match(/\((\d{18,})\)/) || (m.embeds[0]?.footer?.text?.match(/\((\d{18,})\)/));
         if (idMatch) {
-          messagePosted[idMatch[1]] = { p: true, lc: settings.threshold + 1, psm: m.id };
+          messagePosted[idMatch[1]] = { p: true, psm: m.id };
         }
       });
 
@@ -84,30 +85,40 @@ client.on('messageReactionAdd', async (reaction, user) => {
   if (!starChannel) return;
 
   if (!messagePosted[message.id]) {
-    messagePosted[message.id] = { p: false, lc: 0 };
+    messagePosted[message.id] = { p: false };
   }
 
-  const starCount = reaction.count;
-  if (starCount >= settings.threshold) {
+  // Use the real reaction count from the fetched message, not the event payload
+  const starReaction = message.reactions.cache.find(r => r.emoji.name === settings.reactionEmoji);
+  const starCount = starReaction ? starReaction.count : reaction.count;
+  if (starCount < settings.threshold) return;
+
+  // Skip concurrent events for the same message to avoid duplicate posts
+  if (processing.has(message.id)) return;
+  processing.add(message.id);
+
+  try {
     const footer = `${starCount} ${tt} (${message.id})`;
     const embedColor = settings.hexcolor.startsWith('#') ? settings.hexcolor : `#${settings.hexcolor}`;
-    
+
     if (messagePosted[message.id].psm) {
       // Update existing post count
-      try {
-        const starMsg = await starChannel.messages.fetch(messagePosted[message.id].psm);
-        const oldEmbed = starMsg.embeds[0];
-        const newEmbed = EmbedBuilder.from(oldEmbed).setFooter({ text: footer });
-        await starMsg.edit({ embeds: [newEmbed] });
-      } catch (e) { console.log("Could not update starboard message."); }
+      const starMsg = await starChannel.messages.fetch(messagePosted[message.id].psm);
+      const oldEmbed = starMsg.embeds[0];
+      const newEmbed = EmbedBuilder.from(oldEmbed).setFooter({ text: footer });
+      await starMsg.edit({ embeds: [newEmbed] });
     } else if (!messagePosted[message.id].p) {
       // Create new post
       messagePosted[message.id].p = true;
-      
+
+      // Keep the description within the 4096 char embed limit
+      let content = message.content || '';
+      if (content.length > 4000) content = content.slice(0, 3999) + '…';
+
       const embed = new EmbedBuilder()
         .setAuthor({ name: message.member?.displayName || message.author.displayName || message.author.username, iconURL: message.author.displayAvatarURL() })
         .setColor(embedColor)
-        .setDescription(`${message.content || ''}\n\n→ [original message](${message.url})`)
+        .setDescription(`${content}\n\n→ [original message](${message.url})`)
         .setTimestamp(message.createdAt)
         .setFooter({ text: footer });
 
@@ -122,6 +133,40 @@ client.on('messageReactionAdd', async (reaction, user) => {
       const sent = await starChannel.send({ embeds: [embed] });
       messagePosted[message.id].psm = sent.id;
     }
+  } catch (e) {
+    console.log('Starboard error:', e.message);
+    // Allow the next reaction to retry if the post was never created
+    if (!messagePosted[message.id].psm) messagePosted[message.id].p = false;
+  } finally {
+    processing.delete(message.id);
+  }
+});
+
+client.on('messageReactionRemove', async (reaction, user) => {
+  try {
+    if (reaction.partial) await reaction.fetch();
+    if (reaction.message.partial) await reaction.message.fetch();
+
+    const { message } = reaction;
+    if (message.channel.id === settings.channelID) return;
+    if (reaction.emoji.name !== settings.reactionEmoji) return;
+
+    const entry = messagePosted[message.id];
+    if (!entry?.psm) return;
+
+    const starChannel = client.channels.cache.get(settings.channelID);
+    if (!starChannel) return;
+
+    const starReaction = message.reactions.cache.find(r => r.emoji.name === settings.reactionEmoji);
+    const starCount = starReaction ? starReaction.count : 0;
+
+    const starMsg = await starChannel.messages.fetch(entry.psm);
+    const oldEmbed = starMsg.embeds[0];
+    if (!oldEmbed) return;
+    const newEmbed = EmbedBuilder.from(oldEmbed).setFooter({ text: `${starCount} ${tt} (${message.id})` });
+    await starMsg.edit({ embeds: [newEmbed] });
+  } catch (e) {
+    console.log('Could not update star count after reaction removal:', e.message);
   }
 });
 
