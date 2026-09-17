@@ -81,3 +81,10 @@ pm2 save
 4. Right-click on your **Starboard Channel** to "Copy Channel ID".
 
 ---
+
+<p align="center">
+  <a href="LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/License-MIT-yellow.svg"></a>
+</p>
+<p align="center">
+  <sub>Copyright © 2026 <a href="https://github.com/the-jame">the-jame</a> · Released under the <a href="LICENSE">MIT License</a></sub>
+</p>
