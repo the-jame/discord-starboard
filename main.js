@@ -1,3 +1,4 @@
+require('dotenv').config();
 const { Client, GatewayIntentBits, Partials, EmbedBuilder } = require('discord.js');
 const client = new Client({
   intents: [
@@ -124,4 +125,9 @@ client.on('messageReactionAdd', async (reaction, user) => {
   }
 });
 
-client.login(settings.token);
+const token = process.env.DISCORD_TOKEN || settings.token;
+if (!token) {
+  console.log('No token found. Set DISCORD_TOKEN in your environment or .env file.');
+  process.exit(1);
+}
+client.login(token);

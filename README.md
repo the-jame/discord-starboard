@@ -27,13 +27,15 @@ npm install
 
 # Create your settings file
 cp sample-settings.json settings.json
+
+# Add your bot token to a .env file
+echo "DISCORD_TOKEN=YOUR_BOT_TOKEN" > .env
 ```
 
 ### 3. Configuration
 Open `settings.json` and fill in your bot's details:
 ```json
 {
-"token": "YOUR_BOT_TOKEN",
 "serverID": "YOUR_SERVER_ID",
 "channelID": "YOUR_STARBOARD_CHANNEL_ID",
 "reactionEmoji": "⭐",
@@ -43,18 +45,22 @@ Open `settings.json` and fill in your bot's details:
 "fetchLimit": 100
 }
 ```
+Your bot token goes in `.env` (loaded automatically via dotenv):
+```
+DISCORD_TOKEN=YOUR_BOT_TOKEN
+```
 
 ### 4. Running the Bot
 **For testing:**
 ```bash
-node app.js
+npm start
 ```
 
 **For production (Recommended):**
 Keep the bot running 24/7 using [PM2](https://pm2.keymetrics.io/):
 ```bash
 npm install -g pm2
-pm2 start app.js --name "Starboard"
+pm2 start main.js --name "Starboard"
 pm2 save
 ```
 
@@ -63,7 +69,7 @@ pm2 save
 ## Options & Config
 | Option | Type | Description |
 | --- | --- | --- |
-| `token` | String | Your Discord Bot Token (from Developer Portal) |
+| `DISCORD_TOKEN` | Env var | Your Discord Bot Token (from Developer Portal), set in `.env` |
 | `serverID` | String | The ID of the server the bot is in |
 | `channelID` | String | The ID of the channel where stars will be posted |
 | `reactionEmoji`| String | The emoji the bot should track (usually ⭐) |

@@ -1,3 +1,5 @@
 settings.json
 settings2.json
 bad.js
+node_modules/
+.env
