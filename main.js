@@ -22,7 +22,7 @@ try {
   process.exit();
 }
 
-client.on('ready', () => {
+client.on('clientReady', () => {
   console.log(`Starboard Bot started: ${client.guilds.cache.size} guilds.`);
   loadIntoMemory(settings.serverID, settings.channelID, settings.fetchLimit);
 });
