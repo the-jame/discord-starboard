@@ -5,5 +5,8 @@
   "threshold": 3,
   "hexcolor": "f2ea00",
   "dateCutoff": 30,
-  "fetchLimit": 500
+  "fetchLimit": 0,
+  "reconcileLimit": 50,
+  "deleteBelowThreshold": true,
+  "ignoreBots": true
 }
