@@ -7,11 +7,10 @@ const {
   GatewayIntentBits,
   Partials,
   EmbedBuilder,
-  ActionRowBuilder,
-  ButtonBuilder,
-  ButtonStyle,
   PermissionFlagsBits,
 } = require('discord.js');
+const { buildEmbeds, buildComponents, buildAuthor, footerFor } = require('./embeds');
+const { parseConfiguredEmoji, matchesEmoji } = require('./emoji');
 
 const STATE_FILE = path.join(__dirname, 'data', 'starboard.json');
 const UPDATE_DEBOUNCE_MS = 1500;
@@ -114,41 +113,20 @@ function loadSettings() {
 
 const settings = loadSettings();
 
-// ---------------------------------------------------------------------------
-// Emoji matching
-// ---------------------------------------------------------------------------
-
-function parseConfiguredEmoji(input) {
-  const value = input.trim();
-  if (/^\d{17,20}$/.test(value)) {
-    return { id: value, name: null, display: value };
-  }
-
-  const custom = value.match(/^<?(a)?:?([a-zA-Z0-9_~]+):(\d{17,20})>?$/);
-  if (custom) {
-    const animated = custom[1] === 'a';
-    return {
-      id: custom[3],
-      name: custom[2],
-      display: `<${animated ? 'a' : ''}:${custom[2]}:${custom[3]}>`,
-    };
-  }
-
-  return { id: null, name: normalizeEmojiName(value), display: value };
-}
-
-function normalizeEmojiName(name) {
-  // Strip variation selectors so "⭐" and "⭐️" compare equal.
-  return String(name ?? '').replace(/[\uFE0E\uFE0F]/g, '');
-}
-
 const configuredEmoji = parseConfiguredEmoji(settings.reactionEmoji);
 let emojiDisplay = configuredEmoji.display;
 
-function matchesEmoji(emoji) {
-  if (!emoji) return false;
-  if (configuredEmoji.id) return emoji.id === configuredEmoji.id;
-  return normalizeEmojiName(emoji.name) === configuredEmoji.name;
+function getEmbedOptions(member) {
+  return {
+    hexcolor: settings.hexcolor,
+    channelId: settings.channelID,
+    emojiDisplay,
+    member,
+  };
+}
+
+function starFooter(count, sourceId) {
+  return footerFor(count, sourceId, emojiDisplay);
 }
 
 // ---------------------------------------------------------------------------
@@ -296,162 +274,30 @@ let starChannel = null;
 let ready = false;
 const pendingUpdates = new Map();
 const processing = new Set();
+const memberCache = new Map();
 
-function footerFor(count, sourceId) {
-  return `${count} ${emojiDisplay} (${sourceId})`;
+async function resolveMember(message) {
+  if (message.member) return message.member;
+  if (!message.guild || !message.author) return null;
+
+  const key = `${message.guild.id}:${message.author.id}`;
+  if (memberCache.has(key)) return memberCache.get(key);
+
+  const member = await message.guild.members
+    .fetch({ user: message.author.id, force: true })
+    .catch(() => null);
+  memberCache.set(key, member);
+  return member;
 }
 
 function getStarCount(message, fallback = 0) {
-  const reaction = message.reactions.cache.find((r) => matchesEmoji(r.emoji));
+  const reaction = message.reactions.cache.find((r) => matchesEmoji(configuredEmoji, r.emoji));
   return reaction ? reaction.count : fallback;
 }
 
 function isExpired(message) {
   const daysOld = (Date.now() - message.createdAt.getTime()) / 86_400_000;
   return daysOld >= settings.dateCutoff;
-}
-
-const MAX_GALLERY_IMAGES = 4;
-const MAX_ATTACHMENT_LINKS = 8;
-// Leave room for fields inside Discord's 6000-character embed budget.
-const MAX_CONTENT_LENGTH = 3500;
-
-function isImageAttachment(attachment) {
-  if (attachment.contentType?.startsWith('image/')) return true;
-  return /\.(png|jpe?g|gif|webp|avif|bmp)$/i.test(attachment.name ?? attachment.url ?? '');
-}
-
-function truncateText(text, max) {
-  return text.length > max ? `${text.slice(0, max - 1)}…` : text;
-}
-
-function formatBytes(bytes) {
-  if (!Number.isFinite(bytes) || bytes <= 0) return '';
-  const units = ['B', 'KB', 'MB', 'GB'];
-  let value = bytes;
-  let unit = 0;
-  while (value >= 1024 && unit < units.length - 1) {
-    value /= 1024;
-    unit += 1;
-  }
-  return `${unit === 0 ? Math.round(value) : value.toFixed(1)} ${units[unit]}`;
-}
-
-function escapeLinkText(text) {
-  return String(text).replace(/([\[\]])/g, '\\$1');
-}
-
-function buildReplyField(message) {
-  const reference = message.reference;
-  if (!reference?.messageId) return null;
-
-  const channelId = reference.channelId ?? message.channel?.id;
-  const guildId = reference.guildId ?? message.guild?.id;
-  if (!channelId || !guildId) return null;
-
-  const url = `https://discord.com/channels/${guildId}/${channelId}/${reference.messageId}`;
-  const user = message.mentions?.repliedUser;
-  const name = user ? user.displayName ?? user.username : 'a message';
-  return {
-    name: 'Reply',
-    value: `[Replying to ${escapeLinkText(name)}](${url})`,
-    inline: false,
-  };
-}
-
-function buildAttachmentField(attachments) {
-  if (attachments.length === 0) return null;
-
-  const lines = attachments.slice(0, MAX_ATTACHMENT_LINKS).map((attachment) => {
-    const size = formatBytes(attachment.size);
-    const label = escapeLinkText(attachment.name ?? 'attachment');
-    return `[${label}](${attachment.url})${size ? ` • ${size}` : ''}`;
-  });
-  if (attachments.length > MAX_ATTACHMENT_LINKS) {
-    lines.push(`…and ${attachments.length - MAX_ATTACHMENT_LINKS} more`);
-  }
-
-  return {
-    name: `Attachments (${attachments.length})`,
-    value: truncateText(lines.join('\n'), 1024),
-    inline: false,
-  };
-}
-
-function buildEmbeds(message, count) {
-  const attachments = [...(message.attachments?.values?.() ?? [])];
-  const imageAttachments = attachments.filter(isImageAttachment);
-  const gallery = imageAttachments.slice(0, MAX_GALLERY_IMAGES);
-  const galleryIds = new Set(gallery.map((attachment) => attachment.id));
-  const otherAttachments = attachments.filter((attachment) => !galleryIds.has(attachment.id));
-
-  let content = message.content ?? '';
-  if (content.length > MAX_CONTENT_LENGTH) {
-    content = `${content.slice(0, MAX_CONTENT_LENGTH - 1)}…`;
-  }
-
-  const fields = [];
-  if (message.channel?.id && message.channel.id !== settings.channelID) {
-    fields.push({ name: 'Source', value: `<#${message.channel.id}>`, inline: true });
-  }
-
-  const reply = buildReplyField(message);
-  if (reply) fields.push(reply);
-
-  const attachmentField = buildAttachmentField(otherAttachments);
-  if (attachmentField) fields.push(attachmentField);
-
-  const stickers = [...(message.stickers?.values?.() ?? [])];
-  if (stickers.length > 0) {
-    fields.push({
-      name: `Stickers (${stickers.length})`,
-      value: truncateText(stickers.map((sticker) => sticker.name ?? 'sticker').join(', '), 1024),
-      inline: false,
-    });
-  }
-
-  const link = `→ [original message](${message.url})`;
-  const main = new EmbedBuilder()
-    .setAuthor({
-      name: message.member?.displayName || message.author.displayName || message.author.username,
-      iconURL: message.author.displayAvatarURL(),
-      url: message.url,
-    })
-    .setColor(settings.hexcolor)
-    .setDescription(content ? `${content}\n\n${link}` : link)
-    .setTimestamp(message.createdAt)
-    .setFooter({ text: footerFor(count, message.id) });
-
-  if (fields.length > 0) main.addFields(fields);
-
-  const stickerImage = stickers
-    .find((sticker) => /\.(png|apng|gif|webp)(\?|$)/i.test(sticker.url ?? ''))
-    ?.url;
-  const mainImage =
-    gallery[0]?.url ??
-    message.embeds[0]?.image?.url ??
-    message.embeds[0]?.thumbnail?.url ??
-    stickerImage;
-  if (mainImage) main.setImage(mainImage);
-
-  const extras = gallery.slice(1).map((attachment) =>
-    new EmbedBuilder()
-      .setURL(message.url)
-      .setColor(settings.hexcolor)
-      .setImage(attachment.url),
-  );
-
-  return [main, ...extras];
-}
-
-function buildComponents(message) {
-  const row = new ActionRowBuilder().addComponents(
-    new ButtonBuilder()
-      .setStyle(ButtonStyle.Link)
-      .setLabel('Jump to message')
-      .setURL(message.url),
-  );
-  return [row];
 }
 
 function extractSourceChannelId(embed) {
@@ -482,11 +328,11 @@ function extractCount(starMessage) {
   return match ? Number(match[1]) : 0;
 }
 
-async function createStarPost(message, count) {
+async function createStarPost(message, count, member) {
   if (getPost(message.id)) return;
 
   const sent = await starChannel.send({
-    embeds: buildEmbeds(message, count),
+    embeds: buildEmbeds(message, count, getEmbedOptions(member)),
     components: buildComponents(message),
     allowedMentions: { parse: [] },
   });
@@ -496,15 +342,17 @@ async function createStarPost(message, count) {
   await flushState();
 }
 
-async function updateStarPost(sourceId, message, count, post) {
+async function updateStarPost(sourceId, message, count, post, member) {
   try {
     const starMessage = await starChannel.messages.fetch(post.starMessageId);
     const oldEmbeds = starMessage.embeds;
     const embeds = oldEmbeds.length > 0
       ? oldEmbeds.map((embed, index) => (index === 0
-        ? EmbedBuilder.from(embed).setFooter({ text: footerFor(count, sourceId) })
+        ? EmbedBuilder.from(embed)
+          .setFooter({ text: starFooter(count, sourceId) })
+          .setAuthor(buildAuthor(message, member))
         : EmbedBuilder.from(embed)))
-      : buildEmbeds(message, count);
+      : buildEmbeds(message, count, getEmbedOptions(member));
 
     await starMessage.edit({
       embeds,
@@ -516,7 +364,7 @@ async function updateStarPost(sourceId, message, count, post) {
     if (e.code === 10008) {
       // The starboard post was deleted manually; recreate it if still eligible.
       removePost(sourceId);
-      if (count >= settings.threshold) await createStarPost(message, count);
+      if (count >= settings.threshold) await createStarPost(message, count, member);
       return;
     }
     throw e;
@@ -561,14 +409,16 @@ async function syncPost(sourceId, fresh) {
       return;
     }
     if (post.count === count) return;
-    await updateStarPost(sourceId, fresh, count, post);
+    const member = await resolveMember(fresh);
+    await updateStarPost(sourceId, fresh, count, post, member);
     return;
   }
 
   // No post yet: only board messages that still meet the threshold and cutoff.
   if (count < settings.threshold) return;
   if (isExpired(fresh)) return;
-  await createStarPost(fresh, count);
+  const member = await resolveMember(fresh);
+  await createStarPost(fresh, count, member);
 }
 
 async function flushUpdate(message) {
@@ -877,7 +727,7 @@ async function handleReaction(reaction, user, action) {
   const { message } = reaction;
   if (!message.guild || message.guild.id !== settings.serverID) return;
   if (message.channel.id === settings.channelID) return;
-  if (!matchesEmoji(reaction.emoji)) return;
+  if (!matchesEmoji(configuredEmoji, reaction.emoji)) return;
   if (settings.ignoreBots && user.bot) return;
 
   const post = getPost(message.id);
@@ -916,7 +766,7 @@ client.on('messageReactionRemoveAll', (message) => {
 });
 
 client.on('messageReactionRemoveEmoji', (reaction) => {
-  if (!matchesEmoji(reaction.emoji)) return;
+  if (!matchesEmoji(configuredEmoji, reaction.emoji)) return;
   handleBulkReactionChange(reaction.message).catch((e) => warn(`Reaction clear failed: ${e.message}`));
 });
 

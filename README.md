@@ -90,8 +90,8 @@ pm2 save
 ### Embed contents
 New starboard posts include:
 
-- Clickable author name and avatar
-- **Source** channel mention
+- Author guild nickname and guild-specific avatar when set, with global name/avatar fallback
+- Unlabeled source channel link
 - **Reply** context with a jump link when the message is a reply
 - **Attachments** as links with file sizes (non-image files and images beyond the gallery limit)
 - **Stickers** by name, with sticker artwork as a fallback image
@@ -114,6 +114,34 @@ Post mappings are kept in `data/starboard.json`, which is created automatically 
 On the first start (or after changing `serverID`/`channelID`), the bot scans the **entire** starboard channel, paginating 100 messages at a time, and records every post it finds. Deleting `data/starboard.json` forces a full rebuild on the next start. `fetchLimit` can be set above `0` to cap that scan if startup time becomes a concern.
 
 On every startup, the newest `reconcileLimit` tracked posts are re-checked against their source messages so the star count is correct even if reactions changed while the bot was offline. Set `reconcileLimit` to `0` to disable this.
+
+### Rebuilding existing posts
+The rich embed layout applies to new posts. To convert the existing starboard posts, run the rebuild tool:
+
+```bash
+# Check what would be updated without editing anything
+npm run rebuild -- --dry-run --limit 5
+
+# Rebuild a small batch
+npm run rebuild -- --limit 10
+
+# Rebuild everything remaining
+npm run rebuild
+```
+
+Options:
+
+| Flag | Description |
+| --- | --- |
+| `--dry-run` | Fetch and build embeds without editing |
+| `--limit N` | Process at most N posts this run |
+| `--concurrency N` | Parallel workers (default `5`, maximum `10`) |
+| `--all` | Ignore completed entries and rebuild everything |
+| `--verbose` | Log every post |
+
+Progress is stored in `data/rebuild-progress.json`, so the rebuild is resumable. Delete that file to start over. The tool reads `data/starboard.json`, uses a small worker pool, and relies on Discord.js to queue requests within Discord's per-channel edit rate limit. It can run while the bot is online.
+
+Discord's message-edit bucket is the bottleneck, not the bot. Expect roughly **45–60 minutes for 1,000 posts**; the exact time depends on the rate-limit headers Discord returns and how many source messages still exist.
 
 ---
 
